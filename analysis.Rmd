@@ -1,0 +1,31 @@
+---
+title: "NOAA Analysis"
+author: "Daniel DeWaters"
+date: "10/14/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load dependencies
+install.packages("R.utils")
+library(R.utils)
+```
+
+
+```{r getData}
+data_url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+data_file_name <- "./data/repdata_data_StormData.csv.bz2"
+unzipped_file_name <- "./data/repdata_data_StormData.csv"
+
+if(!file.exists(unzipped_file_name)){
+  download.file(data_url, destfile=data_file_name, method="curl")
+  bunzip2(data_file_name, destname=unzipped_file_name, remove=FALSE, overwrite=TRUE)
+}
+
+raw_data <- read.csv(unzipped_file_name)
+
+names(raw_data)
+head(raw_data)
+```
