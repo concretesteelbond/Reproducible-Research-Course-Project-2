@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # Load dependencies
 #install.packages("R.utils") ###########
 library(R.utils)
-library(plyr)
+library(dplyr)
 ```
 
 
@@ -36,9 +36,24 @@ raw_data <- read.csv(unzipped_file_name)
 ```{r cleandata}
 clean_data <- 
   raw_data %>%
-  mutate(EVTYPE = tolower(EVTYPE))
+  mutate(EVTYPE = tolower(EVTYPE)) %>%
+  # Un-abbreviate Thunderstorm
+  mutate(EVTYPE = gsub("tstm", "thunderstorm", EVTYPE)) %>%
+  # Remove plurals
+  mutate(EVTYPE = gsub("winds", "wind", EVTYPE)) %>%
+  mutate(EVTYPE = gsub(".*flood.+"))
+  mutate(EVTYPE = gsub(" \\d+$", "", EVTYPE))
+  
 
-sort(table(clean_data$EVTYPE))
+ev_type_counts <- sort(table(clean_data$EVTYPE), decreasing=TRUE)
+ev_type_counts[1:10]
+
+
 ```
 
+```{r testing}
+ev_df <- as.data.frame(ev_type_counts)
+floods <- grep("flood", ev_df$Var1)
+ev_df[floods,]
+```
 ## Results
