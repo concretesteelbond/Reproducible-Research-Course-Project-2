@@ -1,5 +1,5 @@
 ---
-title: "NOAA Analysis"
+title: "Analysis on Health and Economic Effects of Severe Weather Events"
 author: "Daniel DeWaters"
 date: "10/14/2019"
 output: html_document
@@ -9,10 +9,15 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 # Load dependencies
-install.packages("R.utils")
+#install.packages("R.utils") ###########
 library(R.utils)
+library(plyr)
 ```
 
+
+## Data Processing
+
+I start by downloading the data file, unzipping it, and reading it in using read.csv().
 
 ```{r getData}
 data_url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
@@ -25,7 +30,15 @@ if(!file.exists(unzipped_file_name)){
 }
 
 raw_data <- read.csv(unzipped_file_name)
-
-names(raw_data)
-head(raw_data)
 ```
+
+
+```{r cleandata}
+clean_data <- 
+  raw_data %>%
+  mutate(EVTYPE = tolower(EVTYPE))
+
+sort(table(clean_data$EVTYPE))
+```
+
+## Results
