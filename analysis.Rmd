@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # Load dependencies
 #install.packages("R.utils") ###########
 library(R.utils)
+library(plyr)
 library(dplyr)
 library(ggplot2)
 ```
@@ -33,7 +34,8 @@ if(!file.exists(unzipped_file_name)){
 raw_data <- read.csv(unzipped_file_name)
 ```
 
-Cleaning the dataset is quite a lengthy process. There are a lot of different EVTYPE entries for the same type of weather event but use different phrasing/spelling errors. This part of the preprocessing aims to group together as many of these event types as possible. 
+Cleaning the dataset is quite a lengthy process. There are a lot of different EVTYPE entries for the same type of weather event but use different phrasing or have abreviations or spelling errors. This part of the preprocessing aims to group together as many of these event types as possible. This chunk also processes the property and crop damage columns by replacing the PROPDMGEXP and PROPDMGEXP with their respective exponent and multiplying the PROPDMG and CROPDMG columns by 10 to the power of their corresponding exponents.
+
 ```{r cleandata}
 clean_data <- 
   raw_data %>%
@@ -61,6 +63,8 @@ clean_data <-
   mutate(EVTYPE = gsub("(.*)high wind(.*)", "high wind", EVTYPE)) %>%
   mutate(EVTYPE = gsub("(.*)land(.*)", "landslide", EVTYPE)) %>%
   mutate(EVTYPE = gsub("(.*)slide(.*)", "landslide", EVTYPE)) %>%
+  mutate(EVTYPE = gsub("(.*)water *spout(.*)", "waterspout", EVTYPE)) %>%
+  mutate(EVTYPE = gsub("(.*)wind *chill(.*)", "wind chill", EVTYPE)) %>%
   mutate(EVTYPE = gsub("(.*)hail(.*)", "hail", EVTYPE)) %>%
   mutate(EVTYPE = gsub("(.*)snow(.*)", "snow", EVTYPE)) %>%
   mutate(EVTYPE = gsub("(.*)fire(.*)", "wildfire", EVTYPE)) %>%
@@ -68,9 +72,9 @@ clean_data <-
   mutate(EVTYPE = gsub("(.*)torn(.*)", "tornado", EVTYPE)) %>%
   # Other
   mutate(EVTYPE = gsub("unseason(.*) ", "unseasonal ", EVTYPE)) %>%
-  filter(EVTYPE != grepl("summary", EVTYPE)) %>%########################### <<- Fix this
-  
-  ## Clean property and crop damage and exponents columns
+  filter(!grepl("summary", EVTYPE)) %>%
+
+    ## Clean property and crop damage and exponents columns
   mutate(PROPDMGEXP = tolower(PROPDMGEXP)) %>%
   mutate(CROPDMGEXP = tolower(CROPDMGEXP)) %>%
   # Replace exponent characters with the corresponding number
@@ -87,28 +91,49 @@ clean_data <-
   mutate(cropdamage = CROPDMG * (10^CROPDMGEXP))
   
 
-# Filter by the 50 most numerous EVTYPEs in dataset
+# Filter by event types that have more than 10 records in the dataset
 ev_type_counts <- sort(table(clean_data$EVTYPE), decreasing=TRUE)
 ev_df <- as.data.frame(ev_type_counts, stringsAsFactors=FALSE); names(ev_df) <- c("type", "freq")
-top_counts <- ev_df$type[1:50]
+top_counts <- filter(ev_df, freq >= 10)
 
-data <- filter(clean_data, EVTYPE %in% top_counts)
+data <- filter(clean_data, EVTYPE %in% top_counts$type)
 ```
 
-```{r testing}
+```{r calculations}
 
-# Get the average property damage 
+# Get the average and total property/crop damage for each event type, then the average and total deaths and injuries for each event type
 data_means <-
   data %>%
   group_by(EVTYPE) %>%
-  summarise(mean_prop_dmg = mean(propertydamage, na.rm=TRUE), 
+  summarise(sum_prop_dmg = sum(propertydamage, na.rm=TRUE),
+            sum_crop_dmg = sum(cropdamage, na.rm=TRUE),
+            mean_prop_dmg = mean(propertydamage, na.rm=TRUE), 
             mean_crop_dmg = mean(cropdamage, na.rm=TRUE),
-            total_mean_dmg = mean_prop_dmg + mean_crop_dmg,
+            sum_injuries = sum(INJURIES, na.rm = TRUE),
+            sum_fatalities = sum(INJURIES, na.rm=TRUE),
             mean_injuries = mean(INJURIES, na.rm=TRUE),
-            mean_fatalities = mean(FATALITIES, na.rm=TRUE)) %>%
-  arrange(desc(mean_prop_dmg))
-
-
+            mean_fatalities = mean(FATALITIES, na.rm=TRUE))
 ```
 
 ## Results
+```{r plots}
+top_prop_dmg <-
+  data_means %>%
+  select(EVTYPE, mean_prop_dmg) %>%
+  arrange(desc(mean_prop_dmg)) %>%
+  top_n(5)
+
+g <- ggplot(top_prop_dmg, aes(x=reorder(EVTYPE, -mean_prop_dmg), y=mean_prop_dmg))
+g + geom_bar(stat="identity") + xlab("Weather Event Type") + ylab("Mean Property Damage (In US Dollars)") + ggtitle("5 Highest Average Property Damaging Weather Events")
+
+
+
+top_crop_dmg <-
+  data_means %>%
+  select(EVTYPE, mean_crop_dmg) %>%
+  arrange(desc(mean_crop_dmg)) %>%
+  top_n(5)
+
+g <- ggplot(top_crop_dmg, aes(x=reorder(EVTYPE, -mean_crop_dmg), y=mean_crop_dmg))
+g + geom_bar(stat="identity") + xlab("Weather Event Type") + ylab("Mean Crop Damage (In US Dollars)") + ggtitle("5 Highest Average Crop Damaging Weather Events")
+```
