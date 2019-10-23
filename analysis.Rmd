@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(R.utils)
 library(plyr)
 library(dplyr)
+library(reshape2)
 library(ggplot2)
 ```
 
@@ -101,39 +102,72 @@ data <- filter(clean_data, EVTYPE %in% top_counts$type)
 
 ```{r calculations}
 
-# Get the average and total property/crop damage for each event type, then the average and total deaths and injuries for each event type
+## Get the average and total property/crop damage for each event type, then the average and total deaths and injuries for each event type
 data_means <-
   data %>%
   group_by(EVTYPE) %>%
   summarise(sum_prop_dmg = sum(propertydamage, na.rm=TRUE),
             sum_crop_dmg = sum(cropdamage, na.rm=TRUE),
-            mean_prop_dmg = mean(propertydamage, na.rm=TRUE), 
-            mean_crop_dmg = mean(cropdamage, na.rm=TRUE),
+            total_dmg = sum_prop_dmg + sum_crop_dmg,
             sum_injuries = sum(INJURIES, na.rm = TRUE),
-            sum_fatalities = sum(INJURIES, na.rm=TRUE),
-            mean_injuries = mean(INJURIES, na.rm=TRUE),
-            mean_fatalities = mean(FATALITIES, na.rm=TRUE))
+            sum_fatalities = sum(FATALITIES, na.rm=TRUE))
+
+
+
+## Get the top 10 highest-costing weather event types for total and average property and crop damages
+top_total_dmg <-
+  data_means %>%
+  # Select columns that we want to plot
+  select(EVTYPE, total_dmg, sum_prop_dmg, sum_crop_dmg) %>%
+  # Sort by the top 10 highest total costs
+  arrange(desc(total_dmg)) %>%
+  top_n(10) %>%
+  # Change column names for ease of plotting
+  rename("Property"="sum_prop_dmg", "Crop"="sum_crop_dmg") %>%
+  # Remove total_dmg column for ease of plotting
+  select(EVTYPE, Property, Crop)
+
+# Melt data frame into narrow form for ease of plotting
+top_dmg <- melt(top_total_dmg,
+            id.vars="EVTYPE", measure.vars=c("Property", "Crop"),
+            value.name = "cost", measure.name="Damge")
+
+# Makes ggplot2 plot the barplots in decreasing order
+dmg_order <- top_total_dmg$EVTYPE
+top_dmg$EVTYPE <- factor(top_dmg$EVTYPE, levels=dmg_order)
+
+
+
+## Get the top 10 highest fatal and injuring weather event types
+top_fatal <- 
+  data_means %>%
+  select(EVTYPE, sum_fatalities) %>%
+  arrange(desc(sum_fatalities)) %>%
+  top_n(10) %>%
+  rename("Fatalities"="sum_fatalities")
+
+top_injury <- 
+  data_means %>%
+  select(EVTYPE, sum_injuries) %>%
+  arrange(desc(sum_injuries)) %>%
+  top_n(10) %>%
+  rename("Injuries"="sum_injuries")
 ```
 
 ## Results
 ```{r plots}
-top_prop_dmg <-
-  data_means %>%
-  select(EVTYPE, mean_prop_dmg) %>%
-  arrange(desc(mean_prop_dmg)) %>%
-  top_n(5)
+dmg_plot <- ggplot(top_dmg, aes(fill=variable, x=EVTYPE, y=cost))
+dmg_plot + geom_bar(position="stack", stat="identity") +
+  xlab("Weather Event Type") + ylab("Damage Costs (In US Dollars)") +
+  ggtitle("10 Highest Property and Crop Damaging Weather Events")
 
-g <- ggplot(top_prop_dmg, aes(x=reorder(EVTYPE, -mean_prop_dmg), y=mean_prop_dmg))
-g + geom_bar(stat="identity") + xlab("Weather Event Type") + ylab("Mean Property Damage (In US Dollars)") + ggtitle("5 Highest Average Property Damaging Weather Events")
+fatal_plot <- ggplot(top_fatal, aes(x=reorder(EVTYPE, -Fatalities), y=Fatalities))
+fatal_plot + geom_bar(stat="identity") +
+  xlab("Weather Event Type") + ylab("Total Number of Fatalities") +
+  ggtitle("10 Most Fatal Weather Events")
 
-
-
-top_crop_dmg <-
-  data_means %>%
-  select(EVTYPE, mean_crop_dmg) %>%
-  arrange(desc(mean_crop_dmg)) %>%
-  top_n(5)
-
-g <- ggplot(top_crop_dmg, aes(x=reorder(EVTYPE, -mean_crop_dmg), y=mean_crop_dmg))
-g + geom_bar(stat="identity") + xlab("Weather Event Type") + ylab("Mean Crop Damage (In US Dollars)") + ggtitle("5 Highest Average Crop Damaging Weather Events")
+injury_plot <- ggplot(top_injury, aes(x=reorder(EVTYPE, -Injuries), y=Injuries))
+injury_plot + geom_bar(stat="identity") +
+  xlab("Weather Event Type") + ylab("Total Number of Injuries") +
+  ggtitle("10 Most Injury-Causing Weather Events")
 ```
