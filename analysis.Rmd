@@ -75,7 +75,7 @@ clean_data <-
   mutate(EVTYPE = gsub("unseason(.*) ", "unseasonal ", EVTYPE)) %>%
   filter(!grepl("summary", EVTYPE)) %>%
 
-    ## Clean property and crop damage and exponents columns
+  ## Clean property and crop damage and exponents columns
   mutate(PROPDMGEXP = tolower(PROPDMGEXP)) %>%
   mutate(CROPDMGEXP = tolower(CROPDMGEXP)) %>%
   # Replace exponent characters with the corresponding number
@@ -92,17 +92,23 @@ clean_data <-
   mutate(cropdamage = CROPDMG * (10^CROPDMGEXP))
   
 
-# Filter by event types that have more than 10 records in the dataset
+## Filter by event types that have more than 10 records in the dataset
+# Get all evtypes and count the frequency of each type in dataset
 ev_type_counts <- sort(table(clean_data$EVTYPE), decreasing=TRUE)
+# Convert table to dataframe for ease of sorting by frequency
 ev_df <- as.data.frame(ev_type_counts, stringsAsFactors=FALSE); names(ev_df) <- c("type", "freq")
+# Get list of evtypes that have more than 10 records in dataset
 top_counts <- filter(ev_df, freq >= 10)
-
+# Get records from dataset that occur in list of evtypes that show up more than 10 times
 data <- filter(clean_data, EVTYPE %in% top_counts$type)
 ```
 
+Once the dataset is clean, I calculated the sums of property and crop damage costs for each weather event type and added them together for the total damages. I also calculated the sum of injuries and fatalities. I then get the 10 weather event types that have the highest total damages cost, fatality counts, and injury counts. I will be making a stacked bar plot for plotting the property and crop damage costs, so I had to melt the total damages dataframe to its narrow form so there will be one column for the damage costs and another factor column for the type of damages. 
+
 ```{r calculations}
 
-## Get the average and total property/crop damage for each event type, then the average and total deaths and injuries for each event type
+## Get the average and total property/crop damage for each event type,
+## then the average and total deaths and injuries for each event type
 data_means <-
   data %>%
   group_by(EVTYPE) %>%
@@ -114,7 +120,8 @@ data_means <-
 
 
 
-## Get the top 10 highest-costing weather event types for total and average property and crop damages
+## Get the top 10 highest-costing weather event types for total
+## and average property and crop damages
 top_total_dmg <-
   data_means %>%
   # Select columns that we want to plot
@@ -130,7 +137,8 @@ top_total_dmg <-
 # Melt data frame into narrow form for ease of plotting
 top_dmg <- melt(top_total_dmg,
             id.vars="EVTYPE", measure.vars=c("Property", "Crop"),
-            value.name = "cost", measure.name="Damge")
+            value.name = "cost")
+top_dmg <- rename(top_dmg, "Damage"="variable")
 
 # Makes ggplot2 plot the barplots in decreasing order
 dmg_order <- top_total_dmg$EVTYPE
@@ -155,19 +163,26 @@ top_injury <-
 ```
 
 ## Results
+
+The largest economic-affecting weather event type is "```r top_total_dmg$EVTYPE[1]```" with it's property and crop damage costs totaling at \$```r top_total_dmg$[1]```########### <- fix
+
 ```{r plots}
-dmg_plot <- ggplot(top_dmg, aes(fill=variable, x=EVTYPE, y=cost))
+# Make plot for total damages made by each weather event type
+dmg_plot <- ggplot(top_dmg, aes(fill=Damage, x=EVTYPE, y=cost))
 dmg_plot + geom_bar(position="stack", stat="identity") +
   xlab("Weather Event Type") + ylab("Damage Costs (In US Dollars)") +
-  ggtitle("10 Highest Property and Crop Damaging Weather Events")
+  ggtitle("10 Highest Property and Crop Damaging Weather Events") +
+  theme(legend.position=c(.93, .9))
 
+# Make plot for total fatalities by each weather event type
 fatal_plot <- ggplot(top_fatal, aes(x=reorder(EVTYPE, -Fatalities), y=Fatalities))
-fatal_plot + geom_bar(stat="identity") +
+fatal_plot + geom_bar(stat="identity", fill="#F8766D") +
   xlab("Weather Event Type") + ylab("Total Number of Fatalities") +
   ggtitle("10 Most Fatal Weather Events")
 
+# Make plot for total injuries by each weather event type
 injury_plot <- ggplot(top_injury, aes(x=reorder(EVTYPE, -Injuries), y=Injuries))
-injury_plot + geom_bar(stat="identity") +
+injury_plot + geom_bar(stat="identity", fill="#00BFC4") +
   xlab("Weather Event Type") + ylab("Total Number of Injuries") +
   ggtitle("10 Most Injury-Causing Weather Events")
 ```
