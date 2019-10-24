@@ -1,5 +1,5 @@
 ---
-title: "Analysis on Health and Economic Effects of Severe Weather Events"
+title: "Health and Economic Effects of Severe Weather Events"
 author: "Daniel DeWaters"
 date: "10/14/2019"
 output: html_document
@@ -9,7 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 # Load dependencies
-#install.packages("R.utils") ###########
 library(R.utils)
 library(plyr)
 library(dplyr)
@@ -17,25 +16,39 @@ library(reshape2)
 library(ggplot2)
 ```
 
+### Synopsis
 
-## Data Pre-processing
+This study seeks to answer two questions: Of the weather event types listed in the National Weather Service storm data set, which types have the greatest economic consequences and which are most harmful to population health? I chose to answer these questions by calculating the total property and crop damage costs from each weather event type using the "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP" columns in the data set. I then calculated the total fatalities and injuries from each weather event type using the "FATALITIES" and "INJURIES" columns. I took the greatest 10 weather event types from all of these variables and plotted them on a barplot using ggplot2. I chose to calculate the *total* property and crop damage costs, fatalities, and injuries for each type over the averages because I think it is better to prepare for weather events that are costly *and* frequent, therefore allowing us to save more lives and money from damages over time. 
+
+
+## 1. Getting the Data
 
 I start by downloading the data file, unzipping it, and reading it in using read.csv().
 
 ```{r getData}
+# File URL/paths
 data_url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
 data_file_name <- "./data/repdata_data_StormData.csv.bz2"
 unzipped_file_name <- "./data/repdata_data_StormData.csv"
 
+# Download file if it does not exist
 if(!file.exists(unzipped_file_name)){
   download.file(data_url, destfile=data_file_name, method="curl")
   bunzip2(data_file_name, destname=unzipped_file_name, remove=FALSE, overwrite=TRUE)
 }
 
+# Read in data
 raw_data <- read.csv(unzipped_file_name)
 ```
 
-Cleaning the dataset is quite a lengthy process. There are a lot of different EVTYPE entries for the same type of weather event but use different phrasing or have abreviations or spelling errors. This part of the preprocessing aims to group together as many of these event types as possible. This chunk also processes the property and crop damage columns by replacing the PROPDMGEXP and PROPDMGEXP with their respective exponent and multiplying the PROPDMG and CROPDMG columns by 10 to the power of their corresponding exponents.
+## 2. Data Processing
+
+### a. Cleaning
+Cleaning the dataset was quite a process. There are a lot of different EVTYPE entries for the same type of weather event but use different phrasing or have abbreviations or spelling errors. This part of the preprocessing aims to group together as many of these event types as possible. Combining most of these event types ultimately did not matter in the final results, but in the future if there is some other analysis I want to run on the data set, a large portion of the cleaning will already be done.
+
+This chunk also processes the property and crop damage columns by replacing the PROPDMGEXP and PROPDMGEXP with their respective exponent and multiplying the PROPDMG and CROPDMG columns by 10 to the power of their corresponding exponents.
+
+After that is finished, I remove all event types that have less than 10 records in the data set. I chose to do this because I think each event type should have a decent sample size. Also, the types with less than 10 records are either too complex to categorize or have a typo that would add several lines to my already lengthy cleaning process.
 
 ```{r cleandata}
 clean_data <- 
@@ -73,6 +86,11 @@ clean_data <-
   mutate(EVTYPE = gsub("(.*)torn(.*)", "tornado", EVTYPE)) %>%
   # Other
   mutate(EVTYPE = gsub("unseason(.*) ", "unseasonal ", EVTYPE)) %>%
+  mutate(EVTYPE = gsub("(.*)heat(.*)|(.*)hot(.*)|(.*)warm(.*)", "heat", EVTYPE)) %>%
+  mutate(EVTYPE = gsub("(.*)cold(.*)|(.*)cool(.*)", "cold", EVTYPE)) %>%
+  mutate(EVTYPE = gsub("(.*)freeze(.*)", "freeze", EVTYPE)) %>%
+  mutate(EVTYPE = gsub("(.*)freezing rain(.*)", "freezing rain", EVTYPE)) %>%
+  mutate(EVTYPE = gsub("^(?!freezing)(.*)rain(.*)", "rain", EVTYPE, perl=TRUE)) %>%
   filter(!grepl("summary", EVTYPE)) %>%
 
   ## Clean property and crop damage and exponents columns
@@ -103,6 +121,7 @@ top_counts <- filter(ev_df, freq >= 10)
 data <- filter(clean_data, EVTYPE %in% top_counts$type)
 ```
 
+### b. Calculations
 Once the dataset is clean, I calculated the sums of property and crop damage costs for each weather event type and added them together for the total damages. I also calculated the sum of injuries and fatalities. I then get the 10 weather event types that have the highest total damages cost, fatality counts, and injury counts. I will be making a stacked bar plot for plotting the property and crop damage costs, so I had to melt the total damages dataframe to its narrow form so there will be one column for the damage costs and another factor column for the type of damages. 
 
 ```{r calculations}
@@ -128,15 +147,15 @@ top_total_dmg <-
   select(EVTYPE, total_dmg, sum_prop_dmg, sum_crop_dmg) %>%
   # Sort by the top 10 highest total costs
   arrange(desc(total_dmg)) %>%
-  top_n(10) %>%
+  top_n(10, sum_crop_dmg) %>%
   # Change column names for ease of plotting
   rename("Property"="sum_prop_dmg", "Crop"="sum_crop_dmg") %>%
   # Remove total_dmg column for ease of plotting
-  select(EVTYPE, Property, Crop)
+  select(EVTYPE, Crop, Property)
 
 # Melt data frame into narrow form for ease of plotting
 top_dmg <- melt(top_total_dmg,
-            id.vars="EVTYPE", measure.vars=c("Property", "Crop"),
+            id.vars="EVTYPE", measure.vars=c("Crop", "Property"),
             value.name = "cost")
 top_dmg <- rename(top_dmg, "Damage"="variable")
 
@@ -151,38 +170,46 @@ top_fatal <-
   data_means %>%
   select(EVTYPE, sum_fatalities) %>%
   arrange(desc(sum_fatalities)) %>%
-  top_n(10) %>%
+  top_n(10, sum_fatalities) %>%
   rename("Fatalities"="sum_fatalities")
 
 top_injury <- 
   data_means %>%
   select(EVTYPE, sum_injuries) %>%
   arrange(desc(sum_injuries)) %>%
-  top_n(10) %>%
+  top_n(10, sum_injuries) %>%
   rename("Injuries"="sum_injuries")
 ```
 
-## Results
+## 3. Results
 
-The largest economic-affecting weather event type is "```r top_total_dmg$EVTYPE[1]```" with it's property and crop damage costs totaling at \$```r top_total_dmg$[1]```########### <- fix
+### a. Economic Consequences
+The largest economic-affecting weather event type is "`r top_total_dmg$EVTYPE[1]`" with its property and crop damage costs totaling at \$`r format(top_total_dmg$Property[1] + top_total_dmg$Crop[1], scientific=FALSE, big.mark=",")`. The majority of the damage costs are from property damage.
 
-```{r plots}
+```{r economicplots}
 # Make plot for total damages made by each weather event type
 dmg_plot <- ggplot(top_dmg, aes(fill=Damage, x=EVTYPE, y=cost))
 dmg_plot + geom_bar(position="stack", stat="identity") +
   xlab("Weather Event Type") + ylab("Damage Costs (In US Dollars)") +
   ggtitle("10 Highest Property and Crop Damaging Weather Events") +
-  theme(legend.position=c(.93, .9))
+  theme(legend.position=c(.93, .9)) + theme(axis.text.x=element_text(angle=-25, hjust=0))
+```
 
+### b. Population Health Consequences
+The weather event with the largest effect to human health is "`r format(top_fatal$EVTYPE[1], scientific=FALSE, big.mark=",")`", with a total number of `r format(top_fatal$Fatalities[1], scientific=FALSE, big.mark=",")` fatalities and `r format(top_injury$Injuries[1], scientific=FALSE, big.mark=",")` injuries. 
+
+```{r populationhealthplots}
 # Make plot for total fatalities by each weather event type
 fatal_plot <- ggplot(top_fatal, aes(x=reorder(EVTYPE, -Fatalities), y=Fatalities))
 fatal_plot + geom_bar(stat="identity", fill="#F8766D") +
   xlab("Weather Event Type") + ylab("Total Number of Fatalities") +
-  ggtitle("10 Most Fatal Weather Events")
+  ggtitle("10 Most Fatal Weather Events") +
+  theme(axis.text.x=element_text(angle=-25, hjust=0))
 
 # Make plot for total injuries by each weather event type
 injury_plot <- ggplot(top_injury, aes(x=reorder(EVTYPE, -Injuries), y=Injuries))
 injury_plot + geom_bar(stat="identity", fill="#00BFC4") +
   xlab("Weather Event Type") + ylab("Total Number of Injuries") +
-  ggtitle("10 Most Injury-Causing Weather Events")
+  ggtitle("10 Most Injury-Causing Weather Events") +
+  theme(axis.text.x=element_text(angle=-25, hjust=0))
 ```
